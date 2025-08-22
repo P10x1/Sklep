@@ -1,0 +1,549 @@
+<!--
+  index.html — Prosta kasa fiskalna (np. Biedronka)
+  Funkcje:
+  • Kategorie i produkty
+  • Koszyk z ilościami, usuwaniem, sumą
+  • Dodawanie własnych produktów (nazwa, cena, kategoria, kod kreskowy)
+  • Skaner kodów kreskowych z kamery (QuaggaJS — działa w HTTPS lub localhost)
+  • Płatność: Gotówka (obliczanie reszty), Karta (link do terminal.html), BLIK (nieaktywne)
+
+  Uruchomienie:
+  - Otwórz plik index.html przez serwer (np. VS Code Live Server) albo https, żeby kamera działała.
+  - terminal.html znajdziesz poniżej w tym samym dokumencie – zapisz jako oddzielny plik w tym samym folderze.
+-->
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kasa fiskalna — Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f172a; /* slate-900 */
+      --panel:#111827cc; /* gray-900 */
+      --muted:#94a3b8; /* slate-400 */
+      --text:#e5e7eb; /* gray-200 */
+      --acc:#22c55e; /* green-500 */
+      --acc2:#3b82f6; /* blue-500 */
+      --warn:#f59e0b; /* amber-500 */
+      --danger:#ef4444; /* red-500 */
+      --card:#0b1224; /* custom */
+      --ring:#1f2937; /* gray-800 */
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; 
+      background:radial-gradient(1200px 800px at 10% -20%, #1e293b 0%, #0b1020 60%, #070a16 100%), var(--bg); 
+      color:var(--text);
+      min-height:100vh; display:flex; flex-direction:column;
+    }
+    header{
+      display:flex; align-items:center; gap:12px; padding:16px 24px; 
+      border-bottom:1px solid var(--ring); backdrop-filter:saturate(1.1) blur(6px); 
+      background:linear-gradient(180deg,rgba(17,24,39,.6),rgba(17,24,39,.3)); 
+      position:sticky; top:0; z-index:10;
+    }
+    header .logo{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.3px}
+    header .logo .dot{width:12px; height:12px; border-radius:50%; background:var(--acc)}
+    main{display:grid; grid-template-columns:280px 1fr 360px; gap:16px; padding:16px; flex:1;}
+    .panel{background:linear-gradient(180deg, rgba(17,24,39,.8), rgba(17,24,39,.6)); border:1px solid var(--ring); border-radius:16px; overflow:hidden;}
+    .panel h2{margin:0; padding:12px 16px; font-size:14px; letter-spacing:.4px; color:var(--muted); border-bottom:1px solid var(--ring); background:rgba(2,6,23,.6)}
+    .categories{display:flex; flex-direction:column}
+    .categories button{appearance:none; text-align:left; background:transparent; border:0; color:var(--text); padding:12px 14px; cursor:pointer; border-bottom:1px solid var(--ring); font-weight:500}
+    .categories button.active{background:linear-gradient(90deg, rgba(34,197,94,.18), transparent); color:#ecfdf5}
+    .products{
+      padding:12px; 
+      display:grid; 
+      grid-template-columns:repeat(4, 1fr); /* 4 kolumny w poziomie */
+      gap:12px; 
+      align-content:start;
+    }
+    .product{background:linear-gradient(160deg, rgba(11,18,36,.8), rgba(2,6,23,.8)); border:1px solid var(--ring); border-radius:14px; padding:10px; display:flex; flex-direction:column; gap:8px}
+    .product .thumb{height:100px; border-radius:10px; background:radial-gradient(400px 200px at -10% -10%, #1f2937 0%, #0b1224 50%, #050914 100%); display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted); border:1px dashed #243040}
+    .product .name{font-weight:600}
+    .product .meta{display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:12px}
+    .product .price{font-weight:700}
+    .product button{background:var(--acc2); border:0; color:white; padding:8px 10px; border-radius:10px; cursor:pointer; font-weight:600}
+    .cart{display:flex; flex-direction:column;}
+    .cart .content{padding:12px; display:flex; flex-direction:column; gap:10px;}
+    .cart-item{display:grid; grid-template-columns:1fr auto auto auto; gap:8px; align-items:center; padding:8px; background:rgba(2,6,23,.6); border:1px solid var(--ring); border-radius:12px}
+    .qty{display:flex; align-items:center; gap:6px}
+    .qty button{width:28px; height:28px; border-radius:8px; background:#1d283a; color:#e2e8f0; border:1px solid var(--ring); cursor:pointer}
+    .remove{background:transparent; border:1px solid var(--danger); color:var(--danger); padding:6px 8px; border-radius:8px; cursor:pointer}
+    .totals{margin-top:8px; padding:12px; border-top:1px dashed var(--ring); color:#e2e8f0}
+    .totals .row{display:flex; justify-content:space-between; margin:6px 0}
+    .actions{display:flex; gap:8px; padding:12px; border-top:1px solid var(--ring);}
+    .actions button, .actions a{flex:1; text-align:center; text-decoration:none; background:var(--acc); color:#052e12; font-weight:800; padding:10px 12px; border-radius:12px; border:0; cursor:pointer}
+    .actions .secondary{background:#0b1224; color:#e2e8f0; border:1px solid var(--ring)}
+    .grid-col{display:flex; flex-direction:column}
+    .toolbar{display:flex; gap:8px; padding:12px; border-bottom:1px solid var(--ring); align-items:center}
+    .toolbar input, .toolbar select{background:#0b1224; border:1px solid var(--ring); color:var(--text); padding:8px 10px; border-radius:10px}
+    .toolbar button{background:#1d4ed8; border:0; color:white; padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer}
+    .badge{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; background:#0b1224; border:1px solid var(--ring); color:var(--muted)}
+    .paybox{display:flex; flex-direction:column; gap:10px; padding:12px; border-top:1px solid var(--ring)}
+    .payopt{display:flex; gap:8px; align-items:center}
+    .payopt input{transform:scale(1.2)}
+    .hidden{display:none !important}
+    .scan-area{padding:12px; border-top:1px solid var(--ring)}
+    #scanner{position:relative; width:100%; aspect-ratio: 4/3; background:#0b1224; border:1px solid var(--ring); border-radius:12px; overflow:hidden}
+    #scanner video{width:100%; height:100%; object-fit:cover}
+    .scan-cross{position:absolute; inset:0; border:2px dashed rgba(255,255,255,.15); pointer-events:none}
+    .muted{color:var(--muted)}
+    footer{padding:12px 16px; color:var(--muted); border-top:1px solid var(--ring)}
+    .pill{border:1px solid var(--ring); padding:6px 10px; border-radius:999px; font-size:12px;}
+    .disabled{opacity:.55; filter:grayscale(.4); cursor:not-allowed}
+</style>
+
+</head>
+<body>
+  <header>
+    <div class="logo"><span class="dot"></span> Kasa fiskalna — demo</div>
+    <div class="pill">Skaner działa w HTTPS / localhost</div>
+  </header>
+  <main>
+    <!-- Lewy panel: kategorie + narzędzia -->
+    <section class="panel categories">
+      <h2>Kategorie</h2>
+      <div id="catList"></div>
+      <div class="toolbar">
+        <button id="addProductBtn">+ Własny produkt</button>
+      </div>
+      <div class="scan-area">
+        <div class="muted" style="margin-bottom:6px; font-size:12px;">Skaner kodów kreskowych</div>
+        <div id="scanner"></div>
+        <div class="paybox" style="padding:8px 0 0">
+          <button class="secondary" id="toggleScan">Włącz skaner</button>
+          <small class="muted">Podgląd z kamery zostanie uruchomiony (udziel zgody w przeglądarce).</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- Środkowy panel: produkty -->
+    <section class="panel grid-col">
+      <h2>Produkty</h2>
+      <div class="toolbar">
+        <input type="text" id="search" placeholder="Szukaj produktu lub skanuj kod..." />
+        <select id="filterCat"></select>
+      </div>
+      <div class="products" id="productGrid"></div>
+    </section>
+
+    <!-- Prawy panel: koszyk + płatność -->
+    <section class="panel cart">
+      <h2>Koszyk</h2>
+      <div class="content" id="cartList"></div>
+      <div class="totals">
+        <div class="row"><span>Pozycje:</span><strong id="itemsCount">0</strong></div>
+        <div class="row"><span>Suma:</span><strong id="total">0,00 zł</strong></div>
+      </div>
+      <div class="paybox">
+        <div class="muted">Wybierz metodę płatności</div>
+        <label class="payopt"><input type="radio" name="pay" value="cash" checked> Gotówka</label>
+        <div id="cashBox">
+          <div style="display:flex; gap:8px; align-items:center; margin-top:4px">
+            <input type="number" id="cashGiven" placeholder="Ile zapłacono?" step="0.01" min="0" />
+            <button id="calcChange" class="secondary">Oblicz resztę</button>
+          </div>
+          <div class="row" style="margin-top:8px"><span>Reszta do wydania:</span><strong id="change">0,00 zł</strong></div>
+        </div>
+
+        <label class="payopt"><input type="radio" name="pay" value="card"> Karta</label>
+        <div id="cardBox" class="hidden">
+          <a class="secondary" href="terminal.html" target="_blank">Przejdź do terminala</a>
+        </div>
+
+        <label class="payopt disabled" title="Wkrótce"><input type="radio" name="pay" value="blik" disabled> BLIK (wkrótce)</label>
+      </div>
+      <div class="actions">
+        <button id="finalize">Zakończ i wydrukuj paragon</button>
+        <button class="secondary" id="clear">Wyczyść</button>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <span class="muted">Demo edukacyjne. Marki i produkty przykładowe.</span>
+  </footer>
+
+  <!-- QuaggaJS do skanowania kodów (EAN/Code128, itd.) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js" integrity="sha512-PZZ4y3wTqVGm1FzQbM2pPZ3CwZ5H8Hj4Xaqb0bZ5vUQje17kciM/BrKQ3nIKc5lWkQ1w9J4n1kzQn4M8A7oMkg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <script>
+    // ======= Dane wstępne =======
+    const categories = [
+      { id: 'nabial', name: 'Nabiał' },
+      { id: 'pieczywo', name: 'Pieczywo' },
+      { id: 'napoje', name: 'Napoje' },
+      { id: 'warzywa', name: 'Warzywa & owoce' },
+      { id: 'przekaski', name: 'Przekąski' },
+	  { id: 'zabawki', name: 'Zabawki' },
+    ];
+
+    const initialProducts = [
+      { id:'mleko12', name:'Mleko 3,2% 1L', price:3.99, category:'nabial', barcode:'5901234123457' },
+      { id:'jogurt01', name:'Jogurt naturalny 150g', price:1.79, category:'nabial', barcode:'5901111000003' },
+      { id:'chleb01', name:'Chleb krojony 500g', price:4.50, category:'pieczywo', barcode:'5902222000006' },
+      { id:'bulka01', name:'Bułka kajzerka', price:0.59, category:'pieczywo', barcode:'5902222000013' },
+      { id:'cola05', name:'Napój cola 0,5L', price:3.49, category:'napoje', barcode:'5903333000009' },
+      { id:'woda15', name:'Woda niegazowana 1,5L', price:2.29, category:'napoje', barcode:'5903333000016' },
+      { id:'jablka', name:'Jabłka 1kg', price:4.99, category:'warzywa', barcode:'5904444000002' },
+      { id:'banany', name:'Banany 1kg', price:6.49, category:'warzywa', barcode:'5904444000019' },
+      { id:'czipsy', name:'Chipsy solone 140g', price:5.49, category:'przekaski', barcode:'5905555000005' },
+      { id:'baton', name:'Baton orzechowy', price:2.29, category:'przekaski', barcode:'5905555000012' },
+    ];
+
+    let products = [...initialProducts];
+    const barcodeIndex = () => Object.fromEntries(products.map(p => [p.barcode, p]));
+
+    // ======= UI elementy =======
+    const catList = document.getElementById('catList');
+    const productGrid = document.getElementById('productGrid');
+    const filterCat = document.getElementById('filterCat');
+    const search = document.getElementById('search');
+    const cartList = document.getElementById('cartList');
+    const itemsCount = document.getElementById('itemsCount');
+    const totalEl = document.getElementById('total');
+    const cashBox = document.getElementById('cashBox');
+    const cardBox = document.getElementById('cardBox');
+    const cashGiven = document.getElementById('cashGiven');
+    const changeEl = document.getElementById('change');
+
+    const addProductBtn = document.getElementById('addProductBtn');
+    const toggleScanBtn = document.getElementById('toggleScan');
+    const scannerEl = document.getElementById('scanner');
+
+    let activeCategory = null;
+    let cart = [];
+    let scanning = false;
+
+    // ======= Render: kategorie =======
+    function renderCategories(){
+      catList.innerHTML = '';
+      categories.forEach(c => {
+        const b = document.createElement('button');
+        b.textContent = c.name;
+        b.dataset.id = c.id;
+        b.className = c.id === activeCategory ? 'active' : '';
+        b.onclick = () => { activeCategory = (activeCategory === c.id ? null : c.id); renderCategories(); renderProducts(); };
+        catList.appendChild(b);
+      });
+      // select filtr
+      filterCat.innerHTML = '<option value="">Wszystkie kategorie</option>' + categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+      if(activeCategory){ filterCat.value = activeCategory; }
+    }
+
+    // ======= Render: produkty =======
+    function formatPrice(x){return x.toFixed(2).replace('.', ',') + ' zł'}
+    function inCategory(p){ return !activeCategory || p.category === activeCategory }
+    function renderProducts(){
+      const q = search.value.toLowerCase().trim();
+      const cat = filterCat.value || activeCategory || '';
+      const list = products.filter(p => (!cat || p.category===cat) && (!q || p.name.toLowerCase().includes(q) || p.barcode.includes(q)));
+      productGrid.innerHTML = '';
+      list.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'product';
+        card.innerHTML = `
+          <div class="thumb">${p.barcode || 'brak kodu'}</div>
+          <div class="name">${p.name}</div>
+          <div class="meta"><span class="badge">${(categories.find(c=>c.id===p.category)||{}).name||'Inne'}</span><span class="price">${formatPrice(p.price)}</span></div>
+          <button data-id="${p.id}">Dodaj</button>
+        `;
+        card.querySelector('button').onclick = () => addToCart(p.id);
+        productGrid.appendChild(card);
+      });
+    }
+
+    // ======= Koszyk =======
+    function addToCart(pid){
+      const p = products.find(x=>x.id===pid);
+      const found = cart.find(i=>i.id===pid);
+      if(found){ found.qty++; }
+      else{ cart.push({ id:p.id, name:p.name, price:p.price, qty:1 }); }
+      renderCart();
+    }
+    function changeQty(pid, delta){
+      const i = cart.find(x=>x.id===pid);
+      if(!i) return; i.qty += delta; if(i.qty<=0){ cart = cart.filter(x=>x.id!==pid); }
+      renderCart();
+    }
+    function removeItem(pid){ cart = cart.filter(x=>x.id!==pid); renderCart(); }
+    function cartTotals(){
+      const items = cart.reduce((s,i)=>s+i.qty,0);
+      const sum = cart.reduce((s,i)=>s+i.price*i.qty,0);
+      return {items, sum};
+    }
+    function renderCart(){
+      cartList.innerHTML = '';
+      cart.forEach(i=>{
+        const row = document.createElement('div');
+        row.className = 'cart-item';
+        row.innerHTML = `
+          <div><strong>${i.name}</strong><div class="muted" style="font-size:12px">${formatPrice(i.price)} / szt.</div></div>
+          <div class="qty">
+            <button aria-label="mniej">-</button><span>${i.qty}</span><button aria-label="więcej">+</button>
+          </div>
+          <div><strong>${formatPrice(i.price*i.qty)}</strong></div>
+          <button class="remove">Usuń</button>
+        `;
+        const [minus, plus] = row.querySelectorAll('.qty button');
+        minus.onclick = ()=>changeQty(i.id,-1);
+        plus.onclick = ()=>changeQty(i.id,1);
+        row.querySelector('.remove').onclick = ()=>removeItem(i.id);
+        cartList.appendChild(row);
+      });
+      const {items, sum} = cartTotals();
+      itemsCount.textContent = items;
+      totalEl.textContent = formatPrice(sum);
+    }
+
+    // ======= Płatność =======
+    document.querySelectorAll('input[name="pay"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const val = document.querySelector('input[name="pay"]:checked').value;
+        cashBox.classList.toggle('hidden', val !== 'cash');
+        cardBox.classList.toggle('hidden', val !== 'card');
+      });
+    });
+    document.getElementById('calcChange').onclick = () => {
+      const sum = cartTotals().sum;
+      const given = parseFloat(cashGiven.value || '0');
+      const change = Math.max(0, given - sum);
+      changeEl.textContent = formatPrice(change);
+    };
+
+    document.getElementById('finalize').onclick = () => {
+      if(cart.length===0){ alert('Koszyk jest pusty'); return; }
+      const pay = document.querySelector('input[name="pay"]:checked').value;
+      if(pay==='cash'){
+        const sum = cartTotals().sum; const given = parseFloat(cashGiven.value||'0');
+        if(isNaN(given) || given < sum){ alert('Za mało gotówki — wprowadź kwotę ≥ suma.'); return; }
+      }
+      window.print();
+    };
+    document.getElementById('clear').onclick = () => { cart=[]; renderCart(); cashGiven.value=''; changeEl.textContent = '0,00 zł'; };
+
+    // ======= Skaner kodów (Quagga) =======
+    function startScanner(){
+      if(scanning) return;
+      scanning = true; toggleScanBtn.textContent = 'Wyłącz skaner';
+      scannerEl.innerHTML = '<div class="scan-cross"></div>';
+      Quagga.init({
+        inputStream: { name:'Live', type:'LiveStream', target: scannerEl, constraints: { facingMode:'environment' } },
+        decoder: { readers:['ean_reader','ean_8_reader','code_128_reader','upc_reader','upc_e_reader'] },
+        locate:true
+      }, function(err){ if(err){ console.error(err); alert('Błąd uruchamiania kamery: '+err.message); stopScanner(); return; } Quagga.start(); });
+
+      Quagga.onDetected(onDetected);
+    }
+    function stopScanner(){
+      if(!scanning) return;
+      scanning=false; toggleScanBtn.textContent = 'Włącz skaner';
+      try{ Quagga.offDetected(onDetected); Quagga.stop(); }catch(e){}
+      scannerEl.innerHTML = '';
+    }
+    function onDetected(res){
+      const code = res.codeResult && res.codeResult.code; if(!code) return;
+      // debounce prosty: akceptuj co ~1.2s
+      if(onDetected._lock && Date.now()-onDetected._lock < 1200) return; onDetected._lock = Date.now();
+      const map = barcodeIndex();
+      const p = map[code];
+      if(p){ addToCart(p.id); flash(`Dodano przez skan: ${p.name}`); }
+      else{
+        flash(`Nieznany kod: ${code}. Dodaj produkt.`);
+        showAddProduct({ barcode: code });
+      }
+    }
+
+    toggleScanBtn.onclick = () => scanning ? stopScanner() : startScanner();
+    window.addEventListener('beforeunload', stopScanner);
+
+    // ======= Dodawanie własnych produktów =======
+    function showAddProduct(prefill={}){
+      const wrap = document.createElement('div');
+      wrap.style.position='fixed'; wrap.style.inset='0'; wrap.style.background='rgba(0,0,0,.5)'; wrap.style.display='grid'; wrap.style.placeItems='center'; wrap.style.zIndex='50';
+      wrap.innerHTML = `
+        <div style="width:min(560px,92vw); background:linear-gradient(180deg, rgba(17,24,39,.95), rgba(17,24,39,.85)); border:1px solid var(--ring); border-radius:16px; padding:14px 14px 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+            <h3 style="margin:0">Dodaj produkt</h3>
+            <button id="closeAdd" class="secondary" style="padding:6px 10px">Zamknij</button>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+            <label> Nazwa<br><input id="ap_name" placeholder="np. Ser żółty" /> </label>
+            <label> Cena (zł)<br><input id="ap_price" type="number" step="0.01" min="0" placeholder="0.00" /> </label>
+            <label> Kategoria<br>
+              <select id="ap_cat">${categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select>
+            </label>
+            <label> Kod kreskowy<br><input id="ap_barcode" placeholder="np. 590..." /> </label>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:12px">
+            <button id="ap_save">Zapisz</button>
+            <button id="ap_scan" class="secondary">Skanuj kod</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrap);
+      const ap_name = wrap.querySelector('#ap_name');
+      const ap_price = wrap.querySelector('#ap_price');
+      const ap_cat = wrap.querySelector('#ap_cat');
+      const ap_barcode = wrap.querySelector('#ap_barcode');
+      ap_name.value = prefill.name || '';
+      ap_price.value = prefill.price || '';
+      ap_cat.value = prefill.category || activeCategory || categories[0].id;
+      ap_barcode.value = prefill.barcode || '';
+
+      wrap.querySelector('#closeAdd').onclick = ()=>document.body.removeChild(wrap);
+      wrap.querySelector('#ap_save').onclick = ()=>{
+        const name = ap_name.value.trim();
+        const price = parseFloat(ap_price.value);
+        const category = ap_cat.value;
+        const barcode = ap_barcode.value.trim() || (Date.now()+'');
+        if(!name || isNaN(price)){ alert('Uzupełnij nazwę i cenę'); return; }
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-' + Math.random().toString(36).slice(2,6);
+        products.push({ id, name, price, category, barcode });
+        renderProducts();
+        flash('Dodano produkt: '+name);
+        document.body.removeChild(wrap);
+      };
+      wrap.querySelector('#ap_scan').onclick = ()=>{
+        // tymczasowy mini-skan do pola kodu (używa głównego Quagga)
+        if(!scanning) startScanner();
+        const prev = onDetected;
+        function fillOnce(res){
+          const code = res.codeResult && res.codeResult.code; if(!code) return;
+          Quagga.offDetected(fillOnce);
+          Quagga.onDetected(prev);
+          ap_barcode.value = code;
+          flash('Zeskanowano kod: '+code);
+        }
+        Quagga.offDetected(onDetected);
+        Quagga.onDetected(fillOnce);
+      };
+    }
+    addProductBtn.onclick = () => showAddProduct();
+
+    // ======= UX =======
+    function flash(text){
+      const f = document.createElement('div');
+      f.textContent = text; f.style.position='fixed'; f.style.left='50%'; f.style.top='20px'; f.style.transform='translateX(-50%)'; f.style.background='#111827'; f.style.color='#e5e7eb'; f.style.border='1px solid var(--ring)'; f.style.padding='8px 12px'; f.style.borderRadius='999px'; f.style.zIndex='60';
+      document.body.appendChild(f); setTimeout(()=>{ f.style.transition='opacity .4s'; f.style.opacity='0'; setTimeout(()=>f.remove(), 400); }, 1200);
+    }
+
+    // ======= Inicjalizacja =======
+    renderCategories();
+    renderProducts();
+
+    search.addEventListener('input', renderProducts);
+    filterCat.addEventListener('change', e=>{ activeCategory = e.target.value || null; renderCategories(); renderProducts(); });
+  </script>
+</body>
+</html>
+
+
+<!-- ============================================================= -->
+<!-- ======================= terminal.html ======================== -->
+<!-- Zapisz poniższy kod jako oddzielny plik: terminal.html -->
+<!-- ============================================================= -->
+
+<!--
+  terminal.html — prosty terminal kartowy (demo)
+  Funkcje:
+  • Wyświetlenie kwoty, symulacja wkładania karty / zbliżenia
+  • Klawiatura PIN, tryb przetwarzania, wynik zaakceptowany/odrzucony
+  • Brak prawdziwych płatności — wyłącznie frontendowa symulacja
+-->
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terminal płatniczy — Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; background:#0b1224; color:#e5e7eb; display:grid; place-items:center; min-height:100vh}
+    .term{width:min(420px,94vw); background:linear-gradient(180deg, #0e162c, #0a1022); border:1px solid #1f2937; border-radius:22px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    header{padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1f2937}
+    .screen{padding:16px; display:grid; gap:12px}
+    .amount{font-size:28px; font-weight:800}
+    .status{font-size:12px; color:#94a3b8}
+    .row{display:flex; gap:8px; align-items:center}
+    .btn{flex:1; padding:12px; border-radius:12px; border:1px solid #1f2937; background:#0b1224; color:#e5e7eb; cursor:pointer}
+    .btn.primary{background:#16a34a; color:#052e12; font-weight:900}
+    .pin{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+    .key{padding:14px; background:#111827; border:1px solid #1f2937; border-radius:12px; text-align:center; cursor:pointer; user-select:none; font-weight:700}
+    .display{letter-spacing:6px; font-size:22px; text-align:center; padding:10px; border:1px dashed #334155; border-radius:12px}
+    .ok{background:#16a34a !important; color:#052e12; font-weight:900}
+    .bad{background:#ef4444 !important; color:#fff; font-weight:900}
+  </style>
+</head>
+<body>
+  <div class="term">
+    <header>
+      <div>Terminal — demo</div>
+      <small id="amtInfo" class="status">Kwota: (ustaw ręcznie)</small>
+    </header>
+    <div class="screen">
+      <div class="amount" id="amount">0,00 zł</div>
+      <div class="status" id="status">Włóż / zbliż kartę, następnie wpisz PIN</div>
+      <div class="row">
+        <input id="amtInput" type="number" step="0.01" min="0" placeholder="Kwota" class="btn"/>
+        <button class="btn primary" id="setAmt">Ustaw kwotę</button>
+      </div>
+      <div class="display" id="pinDisp">PIN: </div>
+      <div class="pin" id="keys"></div>
+      <div class="row">
+        <button class="btn" id="cancel">Anuluj</button>
+        <button class="btn primary" id="accept">Akceptuj</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const amountEl = document.getElementById('amount');
+    const amtInput = document.getElementById('amtInput');
+    const setAmt = document.getElementById('setAmt');
+    const statusEl = document.getElementById('status');
+    const pinDisp = document.getElementById('pinDisp');
+    const keys = document.getElementById('keys');
+
+    function fmt(v){ return (Number(v)||0).toFixed(2).replace('.', ',')+' zł'; }
+
+    // Generuj klawisze PIN
+    const layout = ['1','2','3','4','5','6','7','8','9','←','0','OK'];
+    layout.forEach(k=>{
+      const b = document.createElement('div'); b.className='key'; b.textContent=k; keys.appendChild(b);
+    });
+
+    let pin = '';
+    keys.addEventListener('click', e=>{
+      if(!e.target.classList.contains('key')) return;
+      const k = e.target.textContent;
+      if(k==='OK'){ finish(); return; }
+      if(k==='←'){ pin = pin.slice(0,-1); renderPin(); return; }
+      if(/^[0-9]$/.test(k) && pin.length<6){ pin += k; renderPin(); }
+    });
+
+    function renderPin(){ pinDisp.textContent = 'PIN: ' + '•'.repeat(pin.length); }
+
+    setAmt.onclick = ()=>{
+      amountEl.textContent = fmt(amtInput.value);
+      statusEl.textContent = 'Proszę zbliżyć kartę i wprowadzić PIN';
+    };
+
+    document.getElementById('cancel').onclick = ()=>{ pin=''; renderPin(); statusEl.textContent='Transakcja anulowana'; };
+    document.getElementById('accept').onclick = finish;
+
+    function finish(){
+      statusEl.textContent = 'Przetwarzanie…';
+      setTimeout(()=>{
+        const ok = pin.length>=4; // prosta reguła demo
+        statusEl.textContent = ok ? 'Płatność zaakceptowana ✅' : 'Błąd — niepoprawny PIN ❌';
+        pin=''; renderPin();
+      }, 1200);
+    }
+  </script>
+</body>
+</html>

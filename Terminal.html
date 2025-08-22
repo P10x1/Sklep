@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terminal płatniczy — Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif; background:#0b1224; color:#e5e7eb; display:grid; place-items:center; min-height:100vh}
+    .term{width:min(420px,94vw); background:linear-gradient(180deg, #0e162c, #0a1022); border:1px solid #1f2937; border-radius:22px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    header{padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1f2937}
+    .screen{padding:16px; display:grid; gap:12px}
+    .amount{font-size:28px; font-weight:800}
+    .status{font-size:12px; color:#94a3b8}
+    .row{display:flex; gap:8px; align-items:center}
+    .btn{flex:1; padding:12px; border-radius:12px; border:1px solid #1f2937; background:#0b1224; color:#e5e7eb; cursor:pointer}
+    .btn.primary{background:#16a34a; color:#052e12; font-weight:900}
+    .pin{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+    .key{padding:14px; background:#111827; border:1px solid #1f2937; border-radius:12px; text-align:center; cursor:pointer; user-select:none; font-weight:700}
+    .display{letter-spacing:6px; font-size:22px; text-align:center; padding:10px; border:1px dashed #334155; border-radius:12px}
+    .ok{background:#16a34a !important; color:#052e12; font-weight:900}
+    .bad{background:#ef4444 !important; color:#fff; font-weight:900}
+  </style>
+</head>
+<body>
+  <div class="term">
+    <header>
+      <div>Terminal — demo</div>
+      <small id="amtInfo" class="status">Kwota: (ustaw ręcznie)</small>
+    </header>
+    <div class="screen">
+      <div class="amount" id="amount">0,00 zł</div>
+      <div class="status" id="status">Włóż / zbliż kartę, następnie wpisz PIN</div>
+      <div class="row">
+        <input id="amtInput" type="number" step="0.01" min="0" placeholder="Kwota" class="btn"/>
+        <button class="btn primary" id="setAmt">Ustaw kwotę</button>
+      </div>
+      <div class="display" id="pinDisp">PIN: </div>
+      <div class="pin" id="keys"></div>
+      <div class="row">
+        <button class="btn" id="cancel">Anuluj</button>
+        <button class="btn primary" id="accept">Akceptuj</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const amountEl = document.getElementById('amount');
+    const amtInput = document.getElementById('amtInput');
+    const setAmt = document.getElementById('setAmt');
+    const statusEl = document.getElementById('status');
+    const pinDisp = document.getElementById('pinDisp');
+    const keys = document.getElementById('keys');
+
+    function fmt(v){ return (Number(v)||0).toFixed(2).replace('.', ',')+' zł'; }
+
+    // Generuj klawisze PIN
+    const layout = ['1','2','3','4','5','6','7','8','9','←','0','OK'];
+    layout.forEach(k=>{
+      const b = document.createElement('div'); b.className='key'; b.textContent=k; keys.appendChild(b);
+    });
+
+    let pin = '';
+    keys.addEventListener('click', e=>{
+      if(!e.target.classList.contains('key')) return;
+      const k = e.target.textContent;
+      if(k==='OK'){ finish(); return; }
+      if(k==='←'){ pin = pin.slice(0,-1); renderPin(); return; }
+      if(/^[0-9]$/.test(k) && pin.length<6){ pin += k; renderPin(); }
+    });
+
+    function renderPin(){ pinDisp.textContent = 'PIN: ' + '•'.repeat(pin.length); }
+
+    setAmt.onclick = ()=>{
+      amountEl.textContent = fmt(amtInput.value);
+      statusEl.textContent = 'Proszę zbliżyć kartę i wprowadzić PIN';
+    };
+
+    document.getElementById('cancel').onclick = ()=>{ pin=''; renderPin(); statusEl.textContent='Transakcja anulowana'; };
+    document.getElementById('accept').onclick = finish;
+
+    function finish(){
+      statusEl.textContent = 'Przetwarzanie…';
+      setTimeout(()=>{
+        const ok = pin.length>=4; // prosta reguła demo
+        statusEl.textContent = ok ? 'Płatność zaakceptowana ✅' : 'Błąd — niepoprawny PIN ❌';
+        pin=''; renderPin();
+      }, 1200);
+    }
+  </script>
+</body>
+</html>
